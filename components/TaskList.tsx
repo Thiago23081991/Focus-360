@@ -41,6 +41,7 @@ const formatReminder = (isoString: string) => {
 export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, onBreakdown, loadingBreakdown, onMotivate, onSetReminder, onUpdatePriority }) => {
   const [editingReminder, setEditingReminder] = useState<string | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
 
   // Group tasks
   const unsetTasks = tasks.filter(t => t.priority === Priority.UNSET && !t.completed);
@@ -54,7 +55,15 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
       setDraggedTaskId(taskId);
       e.dataTransfer.setData('taskId', taskId);
       e.dataTransfer.effectAllowed = 'move';
+      // Set a slight delay to allow the drag image to be created before styling the element
+      // This is a common trick, though React re-renders might handle it instantly.
   };
+
+  const handleDragEnter = (priority: string) => {
+      if (draggedTaskId) {
+          setDragOverColumn(priority);
+      }
+  }
 
   const handleDragOver = (e: React.DragEvent) => {
       e.preventDefault(); // Necessary to allow dropping
@@ -68,6 +77,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
           onUpdatePriority(taskId, priority);
       }
       setDraggedTaskId(null);
+      setDragOverColumn(null);
   };
 
   const renderTaskCard = (task: Task) => (
@@ -75,7 +85,10 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
       key={task.id} 
       draggable
       onDragStart={(e) => handleDragStart(e, task.id)}
-      className={`bg-slate-800 p-3 rounded-xl border border-slate-700/50 shadow-md hover:shadow-xl hover:border-slate-600 transition-all cursor-grab active:cursor-grabbing group relative ${draggedTaskId === task.id ? 'opacity-40 grayscale' : ''}`}
+      className={`bg-slate-800 p-3 rounded-xl border border-slate-700/50 shadow-md transition-all cursor-grab active:cursor-grabbing group relative 
+      ${draggedTaskId === task.id 
+          ? 'opacity-60 scale-105 shadow-2xl ring-2 ring-indigo-500/50 rotate-2 z-50 grayscale-0' 
+          : 'hover:shadow-xl hover:border-slate-600 hover:-translate-y-1'}`}
     >
         <div className="flex items-start gap-3">
              <div className="mt-1 text-slate-600 cursor-grab active:cursor-grabbing hover:text-indigo-400 transition-colors">
@@ -180,12 +193,15 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
       {/* 1. Backlog / Inbox Zone */}
       {(unsetTasks.length > 0 || draggedTaskId) && (
           <div 
+             onDragEnter={() => handleDragEnter(Priority.UNSET)}
              onDragOver={handleDragOver}
              onDrop={(e) => handleDrop(e, Priority.UNSET)}
              className={`p-4 rounded-2xl border transition-all duration-300 ${
-                 draggedTaskId 
-                    ? 'bg-slate-900/80 border-dashed border-indigo-500/50 ring-2 ring-indigo-500/20' 
-                    : 'bg-slate-900/30 border-slate-800'
+                 dragOverColumn === Priority.UNSET
+                    ? 'bg-slate-900/90 border-indigo-500 ring-2 ring-indigo-500/20 scale-[1.01] animate-pulse'
+                    : draggedTaskId 
+                        ? 'bg-slate-900/80 border-dashed border-indigo-500/50' 
+                        : 'bg-slate-900/30 border-slate-800'
              }`}
           >
              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -211,12 +227,15 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
           
           {/* Critical Column */}
           <div 
+            onDragEnter={() => handleDragEnter(Priority.CRITICAL)}
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, Priority.CRITICAL)}
             className={`flex flex-col h-full rounded-2xl border transition-all duration-300 ${
-                draggedTaskId 
-                    ? 'bg-red-950/20 border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.1)]' 
-                    : 'bg-slate-900/40 border-slate-800/50'
+                dragOverColumn === Priority.CRITICAL
+                    ? 'bg-red-950/30 border-red-500 ring-2 ring-red-500/30 scale-[1.01] animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.2)]'
+                    : draggedTaskId 
+                        ? 'bg-red-950/10 border-red-500/30' 
+                        : 'bg-slate-900/40 border-slate-800/50'
             }`}
           >
               <div className="p-4 border-b border-white/5 flex items-center justify-between sticky top-0 bg-slate-950/80 backdrop-blur-md rounded-t-2xl z-10">
@@ -239,12 +258,15 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
 
           {/* Important Column */}
           <div 
+            onDragEnter={() => handleDragEnter(Priority.IMPORTANT)}
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, Priority.IMPORTANT)}
             className={`flex flex-col h-full rounded-2xl border transition-all duration-300 ${
-                draggedTaskId 
-                    ? 'bg-amber-950/20 border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.1)]' 
-                    : 'bg-slate-900/40 border-slate-800/50'
+                dragOverColumn === Priority.IMPORTANT
+                    ? 'bg-amber-950/30 border-amber-500 ring-2 ring-amber-500/30 scale-[1.01] animate-pulse shadow-[0_0_20px_rgba(245,158,11,0.2)]'
+                    : draggedTaskId 
+                        ? 'bg-amber-950/10 border-amber-500/30' 
+                        : 'bg-slate-900/40 border-slate-800/50'
             }`}
           >
               <div className="p-4 border-b border-white/5 flex items-center justify-between sticky top-0 bg-slate-950/80 backdrop-blur-md rounded-t-2xl z-10">
@@ -267,12 +289,15 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
 
           {/* Can Wait Column */}
           <div 
+             onDragEnter={() => handleDragEnter(Priority.CAN_WAIT)}
              onDragOver={handleDragOver}
              onDrop={(e) => handleDrop(e, Priority.CAN_WAIT)}
              className={`flex flex-col h-full rounded-2xl border transition-all duration-300 ${
-                draggedTaskId 
-                    ? 'bg-blue-950/20 border-blue-500/40 shadow-[0_0_15px_rgba(59,130,246,0.1)]' 
-                    : 'bg-slate-900/40 border-slate-800/50'
+                dragOverColumn === Priority.CAN_WAIT
+                    ? 'bg-blue-950/30 border-blue-500 ring-2 ring-blue-500/30 scale-[1.01] animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]'
+                    : draggedTaskId 
+                        ? 'bg-blue-950/10 border-blue-500/30' 
+                        : 'bg-slate-900/40 border-slate-800/50'
             }`}
           >
               <div className="p-4 border-b border-white/5 flex items-center justify-between sticky top-0 bg-slate-950/80 backdrop-blur-md rounded-t-2xl z-10">
