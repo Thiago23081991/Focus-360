@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, Priority, Category, DailyPlanItem, WeeklyPlanDay } from './types';
 import { TaskList } from './components/TaskList';
@@ -71,24 +70,45 @@ export default function App() {
       if (!ctx) return;
 
       try {
-        const osc = ctx.createOscillator();
-        const gainNode = ctx.createGain();
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(e => console.error("Audio resume error", e));
+        }
+
+        const t = ctx.currentTime;
         
-        osc.connect(gainNode);
-        gainNode.connect(ctx.destination);
+        // Oscilador Principal (Fundamental)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(784, t); // G5
+        osc1.frequency.exponentialRampToValueAtTime(784, t + 1);
         
-        // Configuração para um som de sino "Ding"
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime); // Nota A5
-        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); 
+        gain1.gain.setValueAtTime(0, t);
+        gain1.gain.linearRampToValueAtTime(0.2, t + 0.05); // Ataque suave
+        gain1.gain.exponentialRampToValueAtTime(0.001, t + 1.5); // Decaimento longo
+
+        osc1.start(t);
+        osc1.stop(t + 1.5);
+
+        // Oscilador Secundário (Harmônico para brilho)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+
+        osc2.type = 'triangle'; // Timbre mais metálico
+        osc2.frequency.setValueAtTime(1568, t); // G6
         
-        // Envelope de volume (Ataque rápido, decaimento longo)
-        gainNode.gain.setValueAtTime(0, ctx.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.05);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.0);
-        
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 2.0);
+        gain2.gain.setValueAtTime(0, t);
+        gain2.gain.linearRampToValueAtTime(0.05, t + 0.05);
+        gain2.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+
+        osc2.start(t);
+        osc2.stop(t + 1.0);
+
       } catch (e) {
           console.error("Erro ao reproduzir som:", e);
       }
