@@ -1,0 +1,5 @@
+{
+  "name": "Focus 360",
+  "description": "Um gerenciador de tarefas inteligente que usa o Gemini para analisar linguagem natural, priorizar listas, gerar cronogramas diários e analisar padrões de produtividade.",
+  "requestFramePermissions": []
+}
