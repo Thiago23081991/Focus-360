@@ -2,7 +2,16 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Task, Priority, Category, DailyPlanItem, WeeklyPlanDay, PerformanceAnalysis, Insight } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazy initialization of the AI client to prevent top-level crashes if process.env is not ready
+let aiInstance: GoogleGenAI | null = null;
+
+const getAi = () => {
+  if (!aiInstance) {
+    aiInstance = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+  return aiInstance;
+};
+
 const MODEL_NAME = "gemini-3-flash-preview";
 
 // Helper to clean JSON string if markdown code blocks are present
@@ -25,7 +34,7 @@ export const parseTaskFromInput = async (input: string): Promise<Partial<Task>> 
     required: ["title", "priority", "category"],
   };
 
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: MODEL_NAME,
     contents: `Transforme a frase do usuário em uma tarefa estruturada. Frase: "${input}"
     Se a prioridade não estiver clara, assuma "${Priority.UNSET}". Se a categoria não estiver clara, assuma "${Category.OTHER}".
@@ -62,7 +71,7 @@ export const prioritizeTasksAI = async (tasks: Task[]): Promise<{ id: string; pr
     },
   };
 
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: MODEL_NAME,
     contents: `Analise a lista de tarefas abaixo e classifique cada uma como: "${Priority.CRITICAL}", "${Priority.IMPORTANT}", ou "${Priority.CAN_WAIT}".
     Considere prazos implícitos, impacto e esforço.
@@ -96,7 +105,7 @@ export const generateDailyPlan = async (tasks: Task[]): Promise<DailyPlanItem[]>
     },
   };
 
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: MODEL_NAME,
     contents: `Crie um planejamento diário eficiente começando às 08:00 usando as tarefas abaixo.
     Regras:
@@ -135,7 +144,7 @@ export const generateWeeklyPlan = async (tasks: Task[]): Promise<WeeklyPlanDay[]
     },
   };
 
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: MODEL_NAME,
     contents: `Organize as tarefas da semana de forma equilibrada.
     
@@ -163,7 +172,7 @@ export const breakDownTask = async (taskTitle: string): Promise<string[]> => {
     items: { type: Type.STRING },
   };
 
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: MODEL_NAME,
     contents: `Quebre a tarefa abaixo em pequenas ações práticas e fáceis de executar em até 30 minutos cada. Responda em Português.
     Tarefa: "${taskTitle}"`,
@@ -191,7 +200,7 @@ export const analyzePerformance = async (completed: Task[], notCompleted: Task[]
     required: ["summary", "positivePoint", "difficulty", "suggestion"],
   };
 
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: MODEL_NAME,
     contents: `Analise o desempenho do usuário com base nas informações abaixo. Responda em Português.
     
@@ -213,7 +222,7 @@ export const analyzePerformance = async (completed: Task[], notCompleted: Task[]
 };
 
 export const getMotivationalMessage = async (task: Task): Promise<string> => {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
         model: MODEL_NAME,
         contents: `Crie uma mensagem curta, motivadora e prática para incentivar o usuário a iniciar a tarefa: "${task.title}".
         Contexto: Prioridade é ${task.priority}.
