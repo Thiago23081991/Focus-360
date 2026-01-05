@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Task, Priority, Category, DailyPlanItem, WeeklyPlanDay } from './types';
 import { TaskList } from './components/TaskList';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
@@ -10,37 +10,6 @@ import { parseTaskFromInput, prioritizeTasksAI, generateDailyPlan, generateWeekl
 import { Plus, Wand2, BarChart2, Calendar, Layout, Loader2, Sparkles, BellRing, SlidersHorizontal, CalendarDays } from 'lucide-react';
 
 const initialTasks: Task[] = [];
-
-// Função de som de notificação (Sino)
-const playNotificationSound = () => {
-    try {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContext) return;
-        
-        const ctx = new AudioContext();
-        
-        // Criar oscilador para o "ding"
-        const osc = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-        
-        osc.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        
-        // Parâmetros para som de sino agradável
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime); // Nota A5
-        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); 
-        
-        gainNode.gain.setValueAtTime(0, ctx.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05); // Ataque suave
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5); // Decay longo
-        
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 1.5);
-    } catch (e) {
-        console.error("Erro ao tocar som", e);
-    }
-};
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
@@ -57,6 +26,73 @@ export default function App() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [lastNotifiedMinute, setLastNotifiedMinute] = useState<string | null>(null);
+
+  // Referência para o contexto de áudio (para evitar recriação e bloqueio de autoplay)
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Inicializa o contexto de áudio na primeira interação do usuário
+  useEffect(() => {
+    const initAudio = () => {
+        if (!audioCtxRef.current) {
+            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioContext) {
+                audioCtxRef.current = new AudioContext();
+            }
+        }
+        // Tenta resumir se estiver suspenso (comum em navegadores que bloqueiam autoplay)
+        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+            audioCtxRef.current.resume().catch(() => {});
+        }
+    };
+
+    const handleInteraction = () => {
+        initAudio();
+        // Remove listeners após a primeira interação bem-sucedida se o contexto estiver rodando
+        if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
+             window.removeEventListener('click', handleInteraction);
+             window.removeEventListener('keydown', handleInteraction);
+             window.removeEventListener('touchstart', handleInteraction);
+        }
+    };
+
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('keydown', handleInteraction);
+    window.addEventListener('touchstart', handleInteraction);
+
+    return () => {
+        window.removeEventListener('click', handleInteraction);
+        window.removeEventListener('keydown', handleInteraction);
+        window.removeEventListener('touchstart', handleInteraction);
+    };
+  }, []);
+
+  const playBellSound = () => {
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
+
+      try {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        
+        // Configuração para um som de sino "Ding"
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime); // Nota A5
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); 
+        
+        // Envelope de volume (Ataque rápido, decaimento longo)
+        gainNode.gain.setValueAtTime(0, ctx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.0);
+        
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 2.0);
+      } catch (e) {
+          console.error("Erro ao reproduzir som:", e);
+      }
+  };
 
   // Load from local storage on mount (mock persistence)
   useEffect(() => {
@@ -122,9 +158,9 @@ export default function App() {
                 }
 
                 if (shouldNotify) {
-                    // Tocar som apenas uma vez por ciclo de verificação
+                    // Tocar som apenas uma vez por ciclo de verificação (mesmo se houver múltiplas tarefas)
                     if (!soundPlayedThisCycle) {
-                        playNotificationSound();
+                        playBellSound();
                         soundPlayedThisCycle = true;
                         setLastNotifiedMinute(currentISOMinute);
                     }
