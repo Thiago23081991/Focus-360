@@ -6,7 +6,8 @@ import { DailyPlanner } from './components/DailyPlanner';
 import { WeeklyPlanner } from './components/WeeklyPlanner';
 import { TaskFormModal } from './components/TaskFormModal';
 import { parseTaskFromInput, prioritizeTasksAI, generateDailyPlan, generateWeeklyPlan, breakDownTask, getMotivationalMessage } from './services/geminiService';
-import { Plus, Wand2, BarChart2, Calendar, Layout, Loader2, Sparkles, BellRing, SlidersHorizontal, CalendarDays } from 'lucide-react';
+import { initGoogleClient, handleAuthClick, addTaskToCalendar, handleSignoutClick } from './services/calendarService';
+import { Plus, Wand2, BarChart2, Calendar, Layout, Loader2, Sparkles, BellRing, SlidersHorizontal, CalendarDays, LogIn } from 'lucide-react';
 
 const initialTasks: Task[] = [];
 
@@ -25,12 +26,24 @@ export default function App() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [lastNotifiedMinute, setLastNotifiedMinute] = useState<string | null>(null);
+  const [isCalendarConnected, setIsCalendarConnected] = useState(false);
 
   // Referência para o contexto de áudio (para evitar recriação e bloqueio de autoplay)
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // Inicializa o contexto de áudio na primeira interação do usuário
+  // Inicializa APIs do Google e Audio
   useEffect(() => {
+    // Carrega script do Google Calendar
+    if (typeof window !== 'undefined') {
+        const checkGapi = setInterval(() => {
+            if ((window as any).gapi && (window as any).google) {
+                initGoogleClient((status) => setIsCalendarConnected(status));
+                clearInterval(checkGapi);
+            }
+        }, 500);
+        setTimeout(() => clearInterval(checkGapi), 10000); // timeout
+    }
+
     const initAudio = () => {
         if (!audioCtxRef.current) {
             const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
@@ -38,7 +51,7 @@ export default function App() {
                 audioCtxRef.current = new AudioContext();
             }
         }
-        // Tenta resumir se estiver suspenso (comum em navegadores que bloqueiam autoplay)
+        // Tenta resumir se estiver suspenso
         if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
             audioCtxRef.current.resume().catch(() => {});
         }
@@ -46,7 +59,6 @@ export default function App() {
 
     const handleInteraction = () => {
         initAudio();
-        // Remove listeners após a primeira interação bem-sucedida se o contexto estiver rodando
         if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
              window.removeEventListener('click', handleInteraction);
              window.removeEventListener('keydown', handleInteraction);
@@ -76,36 +88,28 @@ export default function App() {
 
         const t = ctx.currentTime;
         
-        // Oscilador Principal (Fundamental)
         const osc1 = ctx.createOscillator();
         const gain1 = ctx.createGain();
         osc1.connect(gain1);
         gain1.connect(ctx.destination);
-
         osc1.type = 'sine';
-        osc1.frequency.setValueAtTime(784, t); // G5
+        osc1.frequency.setValueAtTime(784, t); 
         osc1.frequency.exponentialRampToValueAtTime(784, t + 1);
-        
         gain1.gain.setValueAtTime(0, t);
-        gain1.gain.linearRampToValueAtTime(0.2, t + 0.05); // Ataque suave
-        gain1.gain.exponentialRampToValueAtTime(0.001, t + 1.5); // Decaimento longo
-
+        gain1.gain.linearRampToValueAtTime(0.2, t + 0.05); 
+        gain1.gain.exponentialRampToValueAtTime(0.001, t + 1.5); 
         osc1.start(t);
         osc1.stop(t + 1.5);
 
-        // Oscilador Secundário (Harmônico para brilho)
         const osc2 = ctx.createOscillator();
         const gain2 = ctx.createGain();
         osc2.connect(gain2);
         gain2.connect(ctx.destination);
-
-        osc2.type = 'triangle'; // Timbre mais metálico
-        osc2.frequency.setValueAtTime(1568, t); // G6
-        
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(1568, t); 
         gain2.gain.setValueAtTime(0, t);
         gain2.gain.linearRampToValueAtTime(0.05, t + 0.05);
         gain2.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
-
         osc2.start(t);
         osc2.stop(t + 1.0);
 
@@ -114,14 +118,12 @@ export default function App() {
       }
   };
 
-  // Load from local storage on mount (mock persistence)
   useEffect(() => {
     const saved = localStorage.getItem('focus-360-tasks');
     if (saved) {
       try { setTasks(JSON.parse(saved)); } catch (e) {}
     }
 
-    // Check notification permission
     if ('Notification' in window) {
         setNotificationPermission(Notification.permission);
         if (Notification.permission === 'default') {
@@ -130,22 +132,18 @@ export default function App() {
     }
   }, []);
 
-  // Save on change
   useEffect(() => {
     localStorage.setItem('focus-360-tasks', JSON.stringify(tasks));
   }, [tasks]);
 
-  // Reminder Check Loop (Verifica a cada 5 segundos)
   useEffect(() => {
     const interval = setInterval(() => {
         const now = new Date();
         const currentTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const currentISOMinute = now.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+        const currentISOMinute = now.toISOString().slice(0, 16); 
         
-        // Evitar notificações duplicadas no mesmo minuto
         if (currentISOMinute === lastNotifiedMinute) return;
         
-        // Get local YYYY-MM-DD for comparison
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
         const day = String(now.getDate()).padStart(2, '0');
@@ -158,27 +156,22 @@ export default function App() {
                 let shouldNotify = false;
 
                 if (task.reminder.includes('T')) {
-                    // Full ISO timestamp (Specific Date and Time)
                     if (task.reminder === currentISOMinute) {
                         shouldNotify = true;
                     }
                 } else {
-                    // Simple Time (HH:MM) - Could be daily forever OR daily within a range
                     if (task.reminder === currentTime) {
                         if (task.startDate && task.endDate) {
-                            // Check if today is within range (inclusive)
                             if (currentLocalDATE >= task.startDate && currentLocalDATE <= task.endDate) {
                                 shouldNotify = true;
                             }
                         } else {
-                            // No range defined, assume daily forever
                             shouldNotify = true;
                         }
                     }
                 }
 
                 if (shouldNotify) {
-                    // Tocar som apenas uma vez por ciclo de verificação (mesmo se houver múltiplas tarefas)
                     if (!soundPlayedThisCycle) {
                         playBellSound();
                         soundPlayedThisCycle = true;
@@ -188,7 +181,7 @@ export default function App() {
                     if (notificationPermission === 'granted') {
                         new Notification(`Lembrete: ${task.title}`, {
                             body: `É hora da tarefa: ${task.title}`,
-                            icon: '/favicon.ico' // fallback
+                            icon: '/favicon.ico'
                         });
                     } else {
                         setMotivationalMsg({ id: task.id, msg: `Lembrete: ${task.title}` });
@@ -197,7 +190,7 @@ export default function App() {
                 }
             }
         });
-    }, 5000); // Check more frequently to not miss the minute start
+    }, 5000); 
 
     return () => clearInterval(interval);
   }, [tasks, notificationPermission, lastNotifiedMinute]);
@@ -208,7 +201,6 @@ export default function App() {
 
     setIsProcessing(true);
     try {
-      // 1. Parse natural language
       const parsed = await parseTaskFromInput(inputValue);
       
       const newTask: Task = {
@@ -227,7 +219,6 @@ export default function App() {
       setInputValue('');
     } catch (error) {
       console.error("Failed to parse task", error);
-      // Fallback
       setTasks(prev => [{
         id: crypto.randomUUID(),
         title: inputValue,
@@ -256,7 +247,6 @@ export default function App() {
       };
       setTasks(prev => [newTask, ...prev]);
       
-      // Request permission if a reminder was set
       if (taskData.reminder && notificationPermission === 'default') {
         Notification.requestPermission().then(p => setNotificationPermission(p));
       }
@@ -355,16 +345,26 @@ export default function App() {
       try {
           const msg = await getMotivationalMessage(task);
           setMotivationalMsg({ id: task.id, msg });
-          // Auto clear after 5s
           setTimeout(() => setMotivationalMsg(null), 5000);
       } catch (err) {
           console.error(err);
+      }
+  };
+
+  const handleCalendarSync = async (task: Task) => {
+      try {
+          const link = await addTaskToCalendar(task);
+          setMotivationalMsg({ id: task.id, msg: "Tarefa adicionada ao Google Calendar!" });
+          setTimeout(() => setMotivationalMsg(null), 3000);
+          window.open(link, '_blank');
+      } catch (error) {
+          alert("Erro ao sincronizar. Verifique se você fez login no calendário.");
       }
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500 selection:text-white">
-      {/* Toast Notification for Motivation/Reminders */}
+      {/* Toast Notification */}
       {motivationalMsg && (
           <div className="fixed bottom-6 right-6 z-50 animate-bounce bg-indigo-600 text-white px-6 py-4 rounded-xl shadow-lg shadow-indigo-900/50 flex items-center gap-3 max-w-sm border border-indigo-500/50">
               <Sparkles className="w-6 h-6 text-yellow-300" />
@@ -399,7 +399,34 @@ export default function App() {
             </button>
         </div>
 
-        <div className="hidden md:block mt-auto w-full pt-6 border-t border-slate-800">
+        <div className="hidden md:block mt-auto w-full pt-6 border-t border-slate-800 space-y-4">
+           {/* Calendar Login Widget */}
+           <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+               <h4 className="font-semibold text-sm mb-2 flex items-center gap-2 text-slate-200">
+                  <Calendar className="w-4 h-4 text-blue-400" /> Google Calendar
+               </h4>
+               {!isCalendarConnected ? (
+                   <button 
+                     onClick={handleAuthClick}
+                     className="w-full py-1.5 px-3 bg-slate-700 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors flex items-center justify-center gap-2"
+                   >
+                     <LogIn className="w-3 h-3" /> Conectar Conta
+                   </button>
+               ) : (
+                   <div className="space-y-2">
+                       <p className="text-xs text-emerald-400 flex items-center gap-1">
+                           <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span> Conectado
+                       </p>
+                       <button 
+                         onClick={() => { handleSignoutClick(); setIsCalendarConnected(false); }}
+                         className="text-xs text-slate-500 hover:text-red-400 underline"
+                       >
+                         Desconectar
+                       </button>
+                   </div>
+               )}
+           </div>
+
            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <h4 className="font-semibold text-sm mb-1 flex items-center gap-2 text-slate-200">
                 <BellRing className="w-4 h-4 text-indigo-400" /> Notificações
@@ -511,6 +538,8 @@ export default function App() {
                     onMotivate={handleMotivation}
                     onSetReminder={handleSetReminder}
                     onUpdatePriority={handleUpdatePriority}
+                    onSyncCalendar={handleCalendarSync}
+                    isCalendarConnected={isCalendarConnected}
                  />
              </div>
          )}

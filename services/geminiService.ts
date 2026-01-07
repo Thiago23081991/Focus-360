@@ -19,6 +19,13 @@ const cleanJson = (text: string) => {
   return text.replace(/```json/g, '').replace(/```/g, '').trim();
 };
 
+// Helper to sanitize fields and prevent [object Object] errors in React
+const safeString = (val: any): string | undefined => {
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  return undefined;
+};
+
 export const parseTaskFromInput = async (input: string): Promise<Partial<Task>> => {
   const schema: Schema = {
     type: Type.OBJECT,
@@ -50,7 +57,18 @@ export const parseTaskFromInput = async (input: string): Promise<Partial<Task>> 
     },
   });
 
-  return JSON.parse(cleanJson(response.text || "{}"));
+  const parsed = JSON.parse(cleanJson(response.text || "{}"));
+
+  // Sanitize return to ensure no objects are passed to UI strings
+  return {
+    title: safeString(parsed.title),
+    startDate: safeString(parsed.startDate),
+    endDate: safeString(parsed.endDate),
+    time: safeString(parsed.time),
+    reminder: safeString(parsed.reminder),
+    priority: (safeString(parsed.priority) as Priority) || Priority.UNSET,
+    category: (safeString(parsed.category) as Category) || Category.OTHER,
+  };
 };
 
 export const prioritizeTasksAI = async (tasks: Task[]): Promise<{ id: string; priority: Priority }[]> => {
@@ -83,7 +101,11 @@ export const prioritizeTasksAI = async (tasks: Task[]): Promise<{ id: string; pr
     },
   });
 
-  return JSON.parse(cleanJson(response.text || "[]"));
+  const parsed = JSON.parse(cleanJson(response.text || "[]"));
+  return parsed.map((item: any) => ({
+    id: safeString(item.id) || '',
+    priority: (safeString(item.priority) as Priority) || Priority.UNSET
+  }));
 };
 
 export const generateDailyPlan = async (tasks: Task[]): Promise<DailyPlanItem[]> => {
@@ -123,7 +145,12 @@ export const generateDailyPlan = async (tasks: Task[]): Promise<DailyPlanItem[]>
     },
   });
 
-  return JSON.parse(cleanJson(response.text || "[]"));
+  const parsed = JSON.parse(cleanJson(response.text || "[]"));
+  return parsed.map((item: any) => ({
+      timeSlot: safeString(item.timeSlot) || '00:00',
+      activity: safeString(item.activity) || 'Atividade',
+      isBreak: !!item.isBreak
+  }));
 };
 
 export const generateWeeklyPlan = async (tasks: Task[]): Promise<WeeklyPlanDay[]> => {
@@ -163,7 +190,12 @@ export const generateWeeklyPlan = async (tasks: Task[]): Promise<WeeklyPlanDay[]
     },
   });
 
-  return JSON.parse(cleanJson(response.text || "[]"));
+  const parsed = JSON.parse(cleanJson(response.text || "[]"));
+  return parsed.map((item: any) => ({
+      day: safeString(item.day) || 'Dia',
+      focus: safeString(item.focus) || 'Geral',
+      tasks: Array.isArray(item.tasks) ? item.tasks.map((t: any) => safeString(t) || '').filter(Boolean) : []
+  }));
 };
 
 export const breakDownTask = async (taskTitle: string): Promise<string[]> => {
@@ -182,7 +214,8 @@ export const breakDownTask = async (taskTitle: string): Promise<string[]> => {
     },
   });
 
-  return JSON.parse(cleanJson(response.text || "[]"));
+  const parsed = JSON.parse(cleanJson(response.text || "[]"));
+  return Array.isArray(parsed) ? parsed.map((t: any) => safeString(t) || '').filter(Boolean) : [];
 };
 
 export const analyzePerformance = async (completed: Task[], notCompleted: Task[]): Promise<PerformanceAnalysis> => {
@@ -218,7 +251,13 @@ export const analyzePerformance = async (completed: Task[], notCompleted: Task[]
     },
   });
 
-  return JSON.parse(cleanJson(response.text || "{}"));
+  const parsed = JSON.parse(cleanJson(response.text || "{}"));
+  return {
+      summary: safeString(parsed.summary) || 'Sem dados suficientes.',
+      positivePoint: safeString(parsed.positivePoint) || 'Continue registrando suas tarefas.',
+      difficulty: safeString(parsed.difficulty) || 'Nenhuma dificuldade detectada.',
+      suggestion: safeString(parsed.suggestion) || 'Tente concluir uma tarefa pequena primeiro.'
+  };
 };
 
 export const getMotivationalMessage = async (task: Task): Promise<string> => {

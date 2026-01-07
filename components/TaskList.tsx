@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Task, Priority, Category } from '../types';
-import { CheckCircle2, Circle, Clock, Tag, AlertTriangle, PlayCircle, Split, Bell, BellRing, X, GripVertical, Repeat, Inbox } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Tag, AlertTriangle, PlayCircle, Split, Bell, X, GripVertical, Repeat, Inbox, Calendar as CalendarIcon, Check } from 'lucide-react';
 
 interface TaskListProps {
   tasks: Task[];
@@ -11,7 +11,9 @@ interface TaskListProps {
   onMotivate: (task: Task) => void;
   onSetReminder: (id: string, time: string | undefined) => void;
   onUpdatePriority: (id: string, priority: Priority) => void;
+  onSyncCalendar: (task: Task) => void;
   loadingBreakdown: string | null;
+  isCalendarConnected: boolean;
 }
 
 const categoryIcons = {
@@ -38,10 +40,11 @@ const formatReminder = (isoString: string) => {
     return `${date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${time}`;
 };
 
-export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, onBreakdown, loadingBreakdown, onMotivate, onSetReminder, onUpdatePriority }) => {
+export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, onBreakdown, loadingBreakdown, onMotivate, onSetReminder, onUpdatePriority, onSyncCalendar, isCalendarConnected }) => {
   const [editingReminder, setEditingReminder] = useState<string | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [syncedTasks, setSyncedTasks] = useState<Set<string>>(new Set());
 
   // Group tasks
   const unsetTasks = tasks.filter(t => t.priority === Priority.UNSET && !t.completed);
@@ -55,8 +58,11 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
       setDraggedTaskId(taskId);
       e.dataTransfer.setData('taskId', taskId);
       e.dataTransfer.effectAllowed = 'move';
-      // Set a slight delay to allow the drag image to be created before styling the element
-      // This is a common trick, though React re-renders might handle it instantly.
+  };
+
+  const handleDragEnd = () => {
+      setDraggedTaskId(null);
+      setDragOverColumn(null);
   };
 
   const handleDragEnter = (priority: string) => {
@@ -66,7 +72,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
   }
 
   const handleDragOver = (e: React.DragEvent) => {
-      e.preventDefault(); // Necessary to allow dropping
+      e.preventDefault(); 
       e.dataTransfer.dropEffect = 'move';
   };
 
@@ -80,15 +86,27 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
       setDragOverColumn(null);
   };
 
+  const handleSyncClick = (task: Task) => {
+      if (!isCalendarConnected) {
+          alert("Conecte ao Google Calendar no menu lateral primeiro.");
+          return;
+      }
+      onSyncCalendar(task);
+      setSyncedTasks(prev => new Set(prev).add(task.id));
+  };
+
   const renderTaskCard = (task: Task) => (
     <div 
       key={task.id} 
       draggable
       onDragStart={(e) => handleDragStart(e, task.id)}
-      className={`bg-slate-800 p-3 rounded-xl border border-slate-700/50 shadow-md transition-all cursor-grab active:cursor-grabbing group relative 
+      onDragEnd={handleDragEnd}
+      className={`bg-slate-800 p-4 rounded-xl border border-slate-700/50 shadow-md transition-all duration-200 cursor-grab active:cursor-grabbing group relative 
       ${draggedTaskId === task.id 
-          ? 'opacity-60 scale-105 shadow-2xl ring-2 ring-indigo-500/50 rotate-2 z-50 grayscale-0' 
-          : 'hover:shadow-xl hover:border-slate-600 hover:-translate-y-1'}`}
+          ? 'rotate-3 scale-105 shadow-2xl ring-2 ring-indigo-500/50 z-50 opacity-100 bg-slate-750' 
+          : draggedTaskId 
+              ? 'opacity-40 scale-95 blur-[1px] grayscale-[0.3]' 
+              : 'hover:shadow-xl hover:border-slate-600 hover:-translate-y-1 opacity-100'}`}
     >
         <div className="flex items-start gap-3">
              <div className="mt-1 text-slate-600 cursor-grab active:cursor-grabbing hover:text-indigo-400 transition-colors">
@@ -116,15 +134,15 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
                       </span>
                     )}
                     {task.reminder && (
-                      <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[10px] flex items-center gap-1">
-                        {!task.reminder.includes('T') ? <Repeat className="w-2.5 h-2.5" /> : <BellRing className="w-2.5 h-2.5" />}
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 border ${!task.reminder.includes('T') ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
+                        {!task.reminder.includes('T') ? <Repeat className="w-3 h-3" /> : <Bell className="w-3 h-3" />}
                         {formatReminder(task.reminder)}
                       </span>
                     )}
                 </div>
 
                 {/* Inline Actions */}
-                <div className="flex items-center gap-1 mt-3 border-t border-slate-700/50 pt-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                <div className={`flex items-center gap-1 mt-3 border-t border-slate-700/50 pt-2 transition-opacity ${draggedTaskId ? 'opacity-0' : 'opacity-60 group-hover:opacity-100'}`}>
                     <button onClick={() => setEditingReminder(editingReminder === task.id ? null : task.id)} className={`p-1.5 rounded-md hover:bg-slate-700 ${task.reminder ? 'text-indigo-400' : 'text-slate-500'}`} title="Lembrete">
                         <Bell className="w-3.5 h-3.5" />
                     </button>
@@ -134,9 +152,17 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
                     <button onClick={() => onBreakdown(task.id)} className="p-1.5 rounded-md hover:bg-slate-700 text-slate-500 hover:text-indigo-400" title="Dividir Tarefa">
                         {loadingBreakdown === task.id ? <div className="animate-spin w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full"/> : <Split className="w-3.5 h-3.5" />}
                     </button>
+                    {/* Calendar Sync Button */}
+                    <button 
+                        onClick={() => handleSyncClick(task)} 
+                        className={`p-1.5 rounded-md hover:bg-slate-700 ${syncedTasks.has(task.id) ? 'text-blue-400' : 'text-slate-500 hover:text-blue-400'}`} 
+                        title={syncedTasks.has(task.id) ? "Sincronizado" : "Sincronizar com Google Calendar"}
+                    >
+                        {syncedTasks.has(task.id) ? <Check className="w-3.5 h-3.5" /> : <CalendarIcon className="w-3.5 h-3.5" />}
+                    </button>
                 </div>
                 
-                 {/* Reminder Input Form (Inline) */}
+                 {/* Reminder Input Form */}
                  {editingReminder === task.id && (
                     <div className="mt-3 bg-slate-900 p-2 rounded-lg text-xs z-10 relative border border-slate-700 animate-slideIn">
                         <p className="text-[10px] text-slate-400 mb-1">Definir lembrete (Data/Hora):</p>
@@ -198,7 +224,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
              onDrop={(e) => handleDrop(e, Priority.UNSET)}
              className={`p-4 rounded-2xl border transition-all duration-300 ${
                  dragOverColumn === Priority.UNSET
-                    ? 'bg-slate-900/90 border-indigo-500 ring-2 ring-indigo-500/20 scale-[1.01] animate-pulse'
+                    ? 'bg-slate-900/90 border-indigo-500 ring-2 ring-indigo-500/20 animate-softBounce'
                     : draggedTaskId 
                         ? 'bg-slate-900/80 border-dashed border-indigo-500/50' 
                         : 'bg-slate-900/30 border-slate-800'
@@ -211,7 +237,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
                     {draggedTaskId ? 'Solte para remover prioridade' : `${unsetTasks.length} tarefas`}
                  </span>
              </h4>
-             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 min-h-[60px]">
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 min-h-[60px]">
                  {unsetTasks.map(t => renderTaskCard(t))}
                  {unsetTasks.length === 0 && draggedTaskId && (
                      <div className="col-span-full h-16 rounded-xl border-2 border-dashed border-slate-700 flex items-center justify-center text-xs text-slate-500 italic bg-slate-900/50">
@@ -232,7 +258,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
             onDrop={(e) => handleDrop(e, Priority.CRITICAL)}
             className={`flex flex-col h-full rounded-2xl border transition-all duration-300 ${
                 dragOverColumn === Priority.CRITICAL
-                    ? 'bg-red-950/30 border-red-500 ring-2 ring-red-500/30 scale-[1.01] animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.2)]'
+                    ? 'bg-red-950/30 border-red-500 ring-2 ring-red-500/30 animate-softBounce shadow-[0_0_20px_rgba(239,68,68,0.2)]'
                     : draggedTaskId 
                         ? 'bg-red-950/10 border-red-500/30' 
                         : 'bg-slate-900/40 border-slate-800/50'
@@ -245,7 +271,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
                   </span>
                   <span className="bg-red-500/10 text-red-400 text-xs px-2.5 py-1 rounded-full font-bold border border-red-500/20">{criticalTasks.length}</span>
               </div>
-              <div className="p-3 flex-1 space-y-3 overflow-y-auto">
+              <div className="p-4 flex-1 space-y-4 overflow-y-auto">
                   {criticalTasks.map(t => renderTaskCard(t))}
                   {criticalTasks.length === 0 && (
                       <div className="h-32 border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-600 text-xs gap-2">
@@ -263,7 +289,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
             onDrop={(e) => handleDrop(e, Priority.IMPORTANT)}
             className={`flex flex-col h-full rounded-2xl border transition-all duration-300 ${
                 dragOverColumn === Priority.IMPORTANT
-                    ? 'bg-amber-950/30 border-amber-500 ring-2 ring-amber-500/30 scale-[1.01] animate-pulse shadow-[0_0_20px_rgba(245,158,11,0.2)]'
+                    ? 'bg-amber-950/30 border-amber-500 ring-2 ring-amber-500/30 animate-softBounce shadow-[0_0_20px_rgba(245,158,11,0.2)]'
                     : draggedTaskId 
                         ? 'bg-amber-950/10 border-amber-500/30' 
                         : 'bg-slate-900/40 border-slate-800/50'
@@ -276,7 +302,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
                   </span>
                   <span className="bg-amber-500/10 text-amber-400 text-xs px-2.5 py-1 rounded-full font-bold border border-amber-500/20">{importantTasks.length}</span>
               </div>
-              <div className="p-3 flex-1 space-y-3 overflow-y-auto">
+              <div className="p-4 flex-1 space-y-4 overflow-y-auto">
                   {importantTasks.map(t => renderTaskCard(t))}
                   {importantTasks.length === 0 && (
                       <div className="h-32 border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-600 text-xs gap-2">
@@ -294,7 +320,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
              onDrop={(e) => handleDrop(e, Priority.CAN_WAIT)}
              className={`flex flex-col h-full rounded-2xl border transition-all duration-300 ${
                 dragOverColumn === Priority.CAN_WAIT
-                    ? 'bg-blue-950/30 border-blue-500 ring-2 ring-blue-500/30 scale-[1.01] animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]'
+                    ? 'bg-blue-950/30 border-blue-500 ring-2 ring-blue-500/30 animate-softBounce shadow-[0_0_20px_rgba(59,130,246,0.2)]'
                     : draggedTaskId 
                         ? 'bg-blue-950/10 border-blue-500/30' 
                         : 'bg-slate-900/40 border-slate-800/50'
@@ -307,7 +333,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
                   </span>
                   <span className="bg-blue-500/10 text-blue-400 text-xs px-2.5 py-1 rounded-full font-bold border border-blue-500/20">{canWaitTasks.length}</span>
               </div>
-              <div className="p-3 flex-1 space-y-3 overflow-y-auto">
+              <div className="p-4 flex-1 space-y-4 overflow-y-auto">
                   {canWaitTasks.map(t => renderTaskCard(t))}
                   {canWaitTasks.length === 0 && (
                       <div className="h-32 border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-600 text-xs gap-2">
@@ -326,7 +352,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
                 <CheckCircle2 className="w-4 h-4" />
                 Concluídas ({completedTasks.length})
              </h4>
-             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 opacity-60 hover:opacity-100 transition-opacity">
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 opacity-60 hover:opacity-100 transition-opacity">
                  {completedTasks.map(task => (
                      <div key={task.id} className="flex items-center gap-3 p-3 bg-slate-900 rounded-lg border border-slate-800">
                         <button onClick={() => onToggle(task.id)} className="text-emerald-500 hover:text-emerald-400"><CheckCircle2 className="w-5 h-5" /></button>
