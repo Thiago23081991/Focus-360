@@ -55,9 +55,15 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
 
   // Drag Handlers
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
-      setDraggedTaskId(taskId);
+      // Define os dados primeiro
       e.dataTransfer.setData('taskId', taskId);
       e.dataTransfer.effectAllowed = 'move';
+      
+      // Adia a atualização visual para permitir que o navegador inicie o arraste corretamente
+      // Isso previne que o arraste seja cancelado imediatamente devido ao re-render
+      setTimeout(() => {
+          setDraggedTaskId(taskId);
+      }, 0);
   };
 
   const handleDragEnd = () => {
@@ -98,7 +104,7 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onToggle, onDelete, o
   const renderTaskCard = (task: Task) => (
     <div 
       key={task.id} 
-      draggable
+      draggable={true}
       onDragStart={(e) => handleDragStart(e, task.id)}
       onDragEnd={handleDragEnd}
       className={`bg-slate-800 p-4 rounded-xl border border-slate-700/50 shadow-md transition-all duration-200 cursor-grab active:cursor-grabbing group relative 
